@@ -1,14 +1,294 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
+// Parts: X-Posts / User Auth
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider     = "postgresql"
-  url          = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
+
+// =======================
+// X-Users & Posts
+// =======================
+
+model XUser {
+  id                   BigInt   @id @default(autoincrement())
+  x_id                 String?  @unique
+  rest_id              String?  @unique
+  screen_name          String?  @unique
+  name                 String?  @db.VarChar(100)
+  description          String?  @db.Text
+  location             String?  @db.VarChar(100)
+  created_at           DateTime
+  is_blue_verified     Boolean  @default(false)
+  profile_image_shape  String?  @db.VarChar(20)
+  profile_image_url    String?  @db.Text
+  profile_banner_url   String?  @db.Text
+  is_professional      Boolean  @default(false)
+  professional_rest_id String?  @db.VarChar(50)
+  professional_type    String?  @db.VarChar(50)
+  updated_at           DateTime @default(now())
+
+  // Relations
+  stats                   XUserStats[]
+  profile_history         XUserProfileHistory[]
+  professional_categories XUserProfessionalCategory[]
+  urls                    XUserUrl[]
+  hashtags                XUserHashtag[]
+  Tweet                   Tweet[]
+  TweetMention            TweetMention[]
+}
+
+model XUserStats {
+  id               BigInt   @id @default(autoincrement())
+  user_id          BigInt
+  followers_count  Int?
+  following_count  Int?
+  tweets_count     Int?
+  listed_count     Int?
+  favourites_count Int?
+  media_count      Int?
+  recorded_at      DateTime @default(now())
+
+  // Relations
+  user XUser @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model XUserProfileHistory {
+  id         BigInt   @id @default(autoincrement())
+  user_id    BigInt
+  field_name String   @db.VarChar(50)
+  old_value  String?  @db.Text
+  new_value  String?  @db.Text
+  changed_at DateTime @default(now())
+
+  // Relations
+  user XUser @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model ProfessionalCategory {
+  id        Int     @id
+  name      String  @db.VarChar(100)
+  icon_name String? @db.VarChar(50)
+
+  // Relations
+  users XUserProfessionalCategory[]
+}
+
+model XUserProfessionalCategory {
+  user_id     BigInt
+  category_id Int
+  assigned_at DateTime @default(now())
+
+  // Relations
+  user     XUser                @relation(fields: [user_id], references: [id])
+  category ProfessionalCategory @relation(fields: [category_id], references: [id])
+
+  @@id([user_id, category_id])
+  @@index([category_id])
+}
+
+model XUserUrl {
+  id           BigInt   @id @default(autoincrement())
+  user_id      BigInt
+  display_url  String?  @db.VarChar(255)
+  expanded_url String?  @db.Text
+  short_url    String?  @db.VarChar(255)
+  url_type     String?  @db.VarChar(50)
+  created_at   DateTime @default(now())
+
+  // Relations
+  user XUser @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model Hashtag {
+  id         BigInt   @id @default(autoincrement())
+  text       String   @unique @db.VarChar(280)
+  created_at DateTime @default(now())
+
+  // Relations
+  users        XUserHashtag[]
+  TweetHashtag TweetHashtag[]
+}
+
+model XUserHashtag {
+  user_id      BigInt
+  hashtag_id   BigInt
+  usage_count  Int      @default(1)
+  last_used_at DateTime @default(now())
+
+  // Relations
+  user    XUser   @relation(fields: [user_id], references: [id])
+  hashtag Hashtag @relation(fields: [hashtag_id], references: [id])
+
+  @@id([user_id, hashtag_id])
+  @@index([hashtag_id])
+}
+
+// Add these models to your existing schema.prisma file
+
+model Tweet {
+  id              BigInt   @id @default(autoincrement())
+  x_rest_id       String?  @unique
+  user_id         BigInt
+  conversation_id String?
+  full_text       String?  @db.Text
+  lang            String?  @db.VarChar(10)
+  created_at      DateTime
+  updated_at      DateTime @default(now())
+  last_check_at   DateTime @default(now())
+
+  // Metrics and states
+  views_count     Int     @default(0)
+  bookmark_count  Int     @default(0)
+  bookmarked      Boolean @default(false)
+  favorite_count  Int     @default(0)
+  favorited       Boolean @default(false)
+  quote_count     Int     @default(0)
+  reply_count     Int     @default(0)
+  retweet_count   Int     @default(0)
+  retweeted       Boolean @default(false)
+  is_quote_status Boolean @default(false)
+
+  // Relations
+  user            XUser          @relation(fields: [user_id], references: [id])
+  hashtags        TweetHashtag[]
+  media           TweetMedia[]
+  mentions        TweetMention[]
+  urls            TweetUrl[]
+  quoted_tweet    Tweet?         @relation("QuotedTweets", fields: [quoted_tweet_id], references: [id])
+  quoted_tweet_id BigInt?
+  quotes          Tweet[]        @relation("QuotedTweets")
+  replied_to      Tweet?         @relation("Replies", fields: [replied_to_id], references: [id])
+  replied_to_id   BigInt?
+  replies         Tweet[]        @relation("Replies")
+
+  inspiredDrafts TweetDraft[] @relation("TweetInspiration")
+  postedDraft    TweetDraft?  @relation("PostedTweet")
+
+  @@index([user_id])
+  @@index([created_at])
+  @@index([conversation_id])
+}
+
+model TweetHashtag {
+  tweet_id   BigInt
+  hashtag_id BigInt
+  indices    Int[] // Position of the hashtag in the tweet
+
+  // Relations
+  tweet   Tweet   @relation(fields: [tweet_id], references: [id])
+  hashtag Hashtag @relation(fields: [hashtag_id], references: [id])
+
+  @@id([tweet_id, hashtag_id])
+  @@index([hashtag_id])
+}
+
+model TweetMedia {
+  tweet_id    BigInt
+  media_key   String  @unique
+  type        String  @db.VarChar(20) // photo, video, animated_gif, quote
+  url         String? @db.Text
+  preview_url String? @db.Text
+  alt_text    String? @db.Text
+  blobData    String?
+
+  // Relations
+  tweet Tweet @relation(fields: [tweet_id], references: [id])
+
+  @@id([tweet_id, media_key])
+}
+
+model TweetMention {
+  tweet_id          BigInt
+  mentioned_user_id BigInt
+  indices           Int[] // Position of the mention in the tweet
+
+  // Relations
+  tweet          Tweet @relation(fields: [tweet_id], references: [id])
+  mentioned_user XUser @relation(fields: [mentioned_user_id], references: [id])
+
+  @@id([tweet_id, mentioned_user_id])
+  @@index([mentioned_user_id])
+}
+
+model TweetUrl {
+  id           BigInt  @id @default(autoincrement())
+  tweet_id     BigInt
+  url          String  @db.Text
+  expanded_url String  @db.Text
+  display_url  String
+  title        String?
+  description  String? @db.Text
+  unwound_url  String? @db.Text
+  indices      Int[] // Position of the URL in the tweet
+
+  // Relations
+  tweet Tweet @relation(fields: [tweet_id], references: [id])
+
+  @@index([tweet_id])
+}
+
+// Add these models to your schema.prisma file
+model TweetDraft {
+  id              BigInt   @id @default(autoincrement())
+  description     String   @db.Text
+  notes           String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  date_to_post    DateTime
+  conversation_id BigInt? // Reference to parent TweetDraft
+
+  // Relations
+  parent_draft TweetDraft?       @relation("TweetDraftThread", fields: [conversation_id], references: [id])
+  child_drafts TweetDraft[]      @relation("TweetDraftThread")
+  media        TweetDraftMedia[]
+
+  // what tweet inspired this
+  tweetInspired    Tweet?  @relation("TweetInspiration", fields: [tweetInspired_id], references: [id])
+  tweetInspired_id BigInt?
+
+  // tweet id posted
+  tweet    Tweet?  @relation("PostedTweet", fields: [tweet_id], references: [id])
+  tweet_id BigInt? @unique
+
+  @@index([conversation_id])
+  @@index([date_to_post])
+  @@index([tweetInspired_id])
+  @@index([tweet_id])
+}
+
+model TweetDraftMedia {
+  id         BigInt   @id @default(autoincrement())
+  draft_id   BigInt
+  type       String   @db.VarChar(20) // photo, video, animated_gif
+  url        String?  @db.Text // URL to the media file
+  alt_text   String?  @db.Text // Alt text for accessibility
+  order      Int      @default(0) // Order of media in the tweet
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  draft TweetDraft @relation(fields: [draft_id], references: [id], onDelete: Cascade)
+
+  @@index([draft_id])
+  @@index([order])
+}
+
+// =======================
+// App Users Auth
+// =======================
 
 enum UserRole {
   ADMIN
